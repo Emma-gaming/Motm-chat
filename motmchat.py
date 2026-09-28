@@ -1,9 +1,11 @@
+import json
 import os
 import time
 import uuid
 import streamlit as st
 from google import genai
 from PIL import Image
+from streamlit_localstorage import LocalStorage
 
 # --- API KEY CONFIGURATION ---
 api_key = None
@@ -22,6 +24,9 @@ client = genai.Client(api_key=api_key)
 st.set_page_config(
     page_title="Myth of the Machine RP", page_icon="⚙️", layout="centered"
 )
+
+# Initialize LocalStorage manager
+localStorage = LocalStorage()
 
 # Custom CSS for high-contrast white text on dark background & input styling
 st.markdown(
@@ -46,8 +51,24 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- CHAT SESSION MANAGEMENT ---
-if "sessions" not in st.session_state:
+# --- PERSISTENT SESSION MANAGEMENT (LocalStorage Integration) ---
+if "sessions_loaded" not in st.session_state:
+  saved_sessions = localStorage.getItem("motm_chat_sessions")
+  saved_current_id = localStorage.getItem("motm_current_id")
+
+  if saved_sessions:
+    try:
+      st.session_state.sessions = json.loads(saved_sessions)
+    except Exception:
+      st.session_state.sessions = {}
+
+  if saved_current_id:
+    st.session_state.current_session_id = saved_current_id
+
+  st.session_state.sessions_loaded = True
+
+# Fallback initialization if nothing is in local storage yet
+if "sessions" not in st.session_state or not st.session_state.sessions:
   default_id = str(uuid.uuid4())[:8]
   st.session_state.sessions = {default_id: {"title": "New Chat", "messages": []}}
   st.session_state.current_session_id = default_id
@@ -56,6 +77,15 @@ if st.session_state.current_session_id not in st.session_state.sessions:
   st.session_state.current_session_id = list(st.session_state.sessions.keys())[0]
 
 current_id = st.session_state.current_session_id
+
+
+def save_to_browser():
+  """Helper function to save sessions to browser storage."""
+  localStorage.setItem(
+      "motm_chat_sessions", json.dumps(st.session_state.sessions)
+  )
+  localStorage.setItem("motm_current_id", st.session_state.current_session_id)
+
 
 if "user_text_input" not in st.session_state:
   st.session_state.user_text_input = ""
@@ -69,6 +99,7 @@ with st.sidebar:
     st.session_state.sessions[new_id] = {"title": "New Chat", "messages": []}
     st.session_state.current_session_id = new_id
     st.session_state.user_text_input = ""
+    save_to_browser()
     st.rerun()
 
   st.divider()
@@ -81,6 +112,7 @@ with st.sidebar:
   )
   if new_chat_name != current_title:
     st.session_state.sessions[current_id]["title"] = new_chat_name
+    save_to_browser()
 
   st.divider()
   st.subheader("Your Conversations")
@@ -96,6 +128,7 @@ with st.sidebar:
     ):
       st.session_state.current_session_id = sess_id
       st.session_state.user_text_input = ""
+      save_to_browser()
       st.rerun()
 
 # --- MAIN CHAT INTERFACE ---
@@ -125,8 +158,8 @@ current_messages = st.session_state.sessions[current_id]["messages"]
 # Display Past Messages
 for message in current_messages:
   with st.chat_message(message["role"]):
-    if "image" in message and message["image"]:
-      st.image(message["image"], caption="Character Reference", width=300)
+    if "image_path" in message and message["image_path"]:
+      st.image(message["image_path"], caption="Character Reference", width=300)
     st.markdown(message["content"])
 
 # --- INPUT CONTROLS ---
@@ -151,11 +184,12 @@ with st.container():
 # Trigger send logic
 if send_clicked and user_input.strip():
   pil_img = None
+  img_byte_str = None
   if uploaded_image is not None:
     pil_img = Image.open(uploaded_image)
 
   current_messages.append(
-      {"role": "user", "content": user_input.strip(), "image": pil_img}
+      {"role": "user", "content": user_input.strip(), "image_path": None}
   )
 
   contents_payload = []
@@ -169,12 +203,12 @@ if send_clicked and user_input.strip():
 
   contents_payload.append(chat_history_text)
 
-  # Generate Response from Gemini with an auto-retry loop to handle 503 spikes gracefully
+  # Generate Response from Gemini with auto-retry loop
   reply = None
   for attempt in range(3):
     try:
       response = client.models.generate_content(
-          model="gemini-3.8-flash",
+          model="gemini-2.5-flash",
           contents=contents_payload,
           config={
               "system_instruction": MOTM_SYSTEM_PROMPT,
@@ -185,11 +219,14 @@ if send_clicked and user_input.strip():
       break
     except Exception as e:
       if "503" in str(e) and attempt < 2:
-        time.sleep(2)  # Wait 2 seconds before retrying
+        time.sleep(2)
         continue
       reply = f"// Error connecting to AI engine: {e}"
 
-  current_messages.append({"role": "assistant", "content": reply, "image": None})
+  current_messages.append({"role": "assistant", "content": reply})
+
+  # Save changes to browser localStorage immediately
+  save_to_browser()
 
   st.session_state.user_text_input = ""
   st.rerun()
