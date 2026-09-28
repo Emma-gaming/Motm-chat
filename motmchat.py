@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 import streamlit as st
 from google import genai
@@ -168,18 +169,25 @@ if send_clicked and user_input.strip():
 
   contents_payload.append(chat_history_text)
 
-  try:
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=contents_payload,
-        config={
-            "system_instruction": MOTM_SYSTEM_PROMPT,
-            "temperature": 0.85,
-        },
-    )
-    reply = response.text
-  except Exception as e:
-    reply = f"// Error connecting to AI engine: {e}"
+  # Generate Response from Gemini with an auto-retry loop to handle 503 spikes gracefully
+  reply = None
+  for attempt in range(3):
+    try:
+      response = client.models.generate_content(
+          model="gemini-2.5-flash",
+          contents=contents_payload,
+          config={
+              "system_instruction": MOTM_SYSTEM_PROMPT,
+              "temperature": 0.85,
+          },
+      )
+      reply = response.text
+      break
+    except Exception as e:
+      if "503" in str(e) and attempt < 2:
+        time.sleep(2)  # Wait 2 seconds before retrying
+        continue
+      reply = f"// Error connecting to AI engine: {e}"
 
   current_messages.append({"role": "assistant", "content": reply, "image": None})
 
