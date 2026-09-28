@@ -174,7 +174,7 @@ if send_clicked and user_input.strip():
   for attempt in range(3):
     try:
       response = client.models.generate_content(
-          model="gemini-2.5-flash-lite",
+          model="gemini-3.8-flash-lite",
           contents=contents_payload,
           config={
               "system_instruction": MOTM_SYSTEM_PROMPT,
