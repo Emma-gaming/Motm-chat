@@ -8,12 +8,21 @@ st.set_page_config(
     layout="centered"
 )
 
-# Custom CSS for a dark-mode roleplay interface
+# Custom CSS for a dark-mode roleplay interface with high-contrast white text
 st.markdown("""
     <style>
     .stApp {
         background-color: #121214;
-        color: #E1E1E6;
+        color: #FFFFFF !important;
+    }
+    p, span, label, div, h1, h2, h3, h4, h5, h6 {
+        color: #FFFFFF !important;
+    }
+    .stChatMessage {
+        color: #FFFFFF !important;
+    }
+    .stTextInput input {
+        color: #FFFFFF !important;
     }
     </style>
 """, unsafe_allow_html=True)
