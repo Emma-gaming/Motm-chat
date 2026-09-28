@@ -66,7 +66,7 @@ if user_input := st.chat_input("Type your roleplay action... (Actions with *, Sp
     # Generate Response from Gemini
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             contents=chat_history_text,
             config={
                 "system_instruction": MOTM_SYSTEM_PROMPT,
