@@ -169,12 +169,12 @@ if send_clicked and user_input.strip():
 
   contents_payload.append(chat_history_text)
 
-  # Generate Response from Gemini using gemini-3.8-flash with auto-retry loop
+  # Generate Response from Gemini using gemini-2.5-flash-lite
   reply = None
   for attempt in range(3):
     try:
       response = client.models.generate_content(
-          model="gemini-3.8-flash",
+          model="gemini-2.5-flash-lite",
           contents=contents_payload,
           config={
               "system_instruction": MOTM_SYSTEM_PROMPT,
