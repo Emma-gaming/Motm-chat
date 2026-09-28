@@ -1,15 +1,19 @@
+import os
 import streamlit as st
 from google import genai
 
-# Page configuration for a clean, Gemini-like app UI
+# Connect Streamlit secrets to environment variables for authentication
+if "GEMINI_API_KEY" in st.secrets:
+  os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+
+# Page configuration for a clean app UI
 st.set_page_config(
-    page_title="Myth of the Machine RP",
-    page_icon="⚙️",
-    layout="centered"
+    page_title="Myth of the Machine RP", page_icon="⚙️", layout="centered"
 )
 
-# Custom CSS for a dark-mode roleplay interface with high-contrast white text
-st.markdown("""
+# Custom CSS for dark-mode interface with high-contrast white text
+st.markdown(
+    """
     <style>
     .stApp {
         background-color: #121214;
@@ -25,14 +29,19 @@ st.markdown("""
         color: #FFFFFF !important;
     }
     </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # Initialize Gemini Client
 client = genai.Client()
 
 # App Header
 st.title("⚙️ Myth of the Machine")
-st.caption("Multi-Character Universe • Lore Source: https://www.tumblr.com/myth-of-the-machine")
+st.caption(
+    "Multi-Character Universe • Lore Source:"
+    " https://www.tumblr.com/myth-of-the-machine"
+)
 
 # System Instructions embedding the Tumblr source context and multi-character roleplay rules
 MOTM_SYSTEM_PROMPT = """
@@ -52,41 +61,46 @@ STRICT ROLEPLAY FORMATTING RULES:
 
 # Initialize Chat History
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+  st.session_state.messages = []
 
 # Display Past Messages
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+  with st.chat_message(message["role"]):
+    st.markdown(message["content"])
 
 # User Input Box
-if user_input := st.chat_input("Type your roleplay action... (Actions with *, Speech with — "")"):
-    # Append user input
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
+if user_input := st.chat_input(
+    "Type your roleplay action... (Actions with *, Speech with — "")"
+):
+  # Append user input
+  st.session_state.messages.append({"role": "user", "content": user_input})
+  with st.chat_message("user"):
+    st.markdown(user_input)
 
-    # Build conversation history context for Gemini
-    chat_history_text = ""
-    for msg in st.session_state.messages[-12:]: # Keeps the last 12 messages for active memory
-        role_label = "User" if msg["role"] == "user" else "World/Characters"
-        chat_history_text += f"{role_label}: {msg['content']}\n"
+  # Build conversation history context for Gemini
+  chat_history_text = ""
+  for msg in st.session_state.messages[
+      -12:
+  ]:  # Keeps the last 12 messages for active memory
+    role_label = "User" if msg["role"] == "user" else "World/Characters"
+    chat_history_text += f"{role_label}: {msg['content']}\n"
 
-    # Generate Response from Gemini
-    try:
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=chat_history_text,
-            config={
-                "system_instruction": MOTM_SYSTEM_PROMPT,
-                "temperature": 0.85, # High creativity for immersive roleplay
-            }
-        )
-        reply = response.text
-    except Exception as e:
-        reply = f"// Error connecting to AI engine: {e}"
+  # Generate Response from Gemini
+  try:
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=chat_history_text,
+        config={
+            "system_instruction": MOTM_SYSTEM_PROMPT,
+            "temperature": 0.85,  # High creativity for immersive roleplay
+        },
+    )
+    reply = response.text
+  except Exception as e:
+    reply = f"// Error connecting to AI engine: {e}"
 
-    # Append assistant response
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-    with st.chat_message("assistant"):
-        st.markdown(reply)
+  # Append assistant response
+  st.session_state.messages.append({"role": "assistant", "content": reply})
+  with st.chat_message("assistant"):
+    st.markdown(reply)
+      
