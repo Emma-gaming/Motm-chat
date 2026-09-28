@@ -56,11 +56,10 @@ if st.session_state.current_session_id not in st.session_state.sessions:
 
 current_id = st.session_state.current_session_id
 
-# Track text area input state cleanly
 if "user_text_input" not in st.session_state:
   st.session_state.user_text_input = ""
 
-# --- SIDEBAR FOR CHAT HISTORY ---
+# --- SIDEBAR FOR CHAT HISTORY & RENAMING ---
 with st.sidebar:
   st.title("⚙️ Chats")
 
@@ -73,6 +72,19 @@ with st.sidebar:
 
   st.divider()
 
+  # Active chat rename section
+  st.subheader("Rename Current Chat")
+  current_title = st.session_state.sessions[current_id]["title"]
+  new_chat_name = st.text_input(
+      "Chat Title", value=current_title, key=f"rename_{current_id}"
+  )
+  if new_chat_name != current_title:
+    st.session_state.sessions[current_id]["title"] = new_chat_name
+
+  st.divider()
+  st.subheader("Your Conversations")
+
+  # List past chats
   for sess_id, sess_data in list(st.session_state.sessions.items()):
     is_active = sess_id == current_id
     button_label = (
@@ -116,7 +128,7 @@ for message in current_messages:
       st.image(message["image"], caption="Character Reference", width=300)
     st.markdown(message["content"])
 
-# --- INPUT CONTROLS (Multi-line + Image + Send Button) ---
+# --- INPUT CONTROLS ---
 with st.container():
   uploaded_image = st.file_uploader(
       "Upload Character Reference Image (Optional)",
@@ -124,7 +136,6 @@ with st.container():
       key=f"uploader_{current_id}",
   )
 
-  # Text area allows hitting return/enter freely for new lines
   user_input = st.text_area(
       "Type your roleplay action... (Actions with *, Speech with —)",
       value=st.session_state.user_text_input,
@@ -136,30 +147,16 @@ with st.container():
   with col2:
     send_clicked = st.button("Send", use_container_width=True)
 
-# Trigger send logic when button is pressed and input isn't empty
+# Trigger send logic
 if send_clicked and user_input.strip():
-  # Set automatic chat title on first message
-  if (
-      st.session_state.sessions[current_id]["title"] == "New Chat"
-      and len(user_input.strip()) > 0
-  ):
-    st.session_state.sessions[current_id]["title"] = (
-        user_input.strip()[:25] + "..."
-        if len(user_input.strip()) > 25
-        else user_input.strip()
-    )
-
-  # Process uploaded image PIL format if present
   pil_img = None
   if uploaded_image is not None:
     pil_img = Image.open(uploaded_image)
 
-  # Append user input and image to session history
   current_messages.append(
       {"role": "user", "content": user_input.strip(), "image": pil_img}
   )
 
-  # Build contents payload for Gemini SDK supporting multimodal inputs
   contents_payload = []
   if pil_img:
     contents_payload.append(pil_img)
@@ -171,7 +168,6 @@ if send_clicked and user_input.strip():
 
   contents_payload.append(chat_history_text)
 
-  # Generate Response from Gemini
   try:
     response = client.models.generate_content(
         model="gemini-3.8-flash",
@@ -185,9 +181,7 @@ if send_clicked and user_input.strip():
   except Exception as e:
     reply = f"// Error connecting to AI engine: {e}"
 
-  # Append assistant response
   current_messages.append({"role": "assistant", "content": reply, "image": None})
 
-  # Clear input box state and rerun to display updates cleanly
   st.session_state.user_text_input = ""
   st.rerun()
