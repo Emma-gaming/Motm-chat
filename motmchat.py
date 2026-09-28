@@ -22,7 +22,7 @@ st.set_page_config(
     page_title="Myth of the Machine RP", page_icon="⚙️", layout="centered"
 )
 
-# Custom CSS for high-contrast white text on dark background
+# Custom CSS for high-contrast white text on dark background & input styling
 st.markdown(
     """
     <style>
@@ -38,6 +38,7 @@ st.markdown(
     }
     .stTextInput input, .stTextArea textarea {
         color: #FFFFFF !important;
+        background-color: #1e1e24 !important;
     }
     </style>
 """,
@@ -55,6 +56,10 @@ if st.session_state.current_session_id not in st.session_state.sessions:
 
 current_id = st.session_state.current_session_id
 
+# Track text area input state cleanly
+if "user_text_input" not in st.session_state:
+  st.session_state.user_text_input = ""
+
 # --- SIDEBAR FOR CHAT HISTORY ---
 with st.sidebar:
   st.title("⚙️ Chats")
@@ -63,6 +68,7 @@ with st.sidebar:
     new_id = str(uuid.uuid4())[:8]
     st.session_state.sessions[new_id] = {"title": "New Chat", "messages": []}
     st.session_state.current_session_id = new_id
+    st.session_state.user_text_input = ""
     st.rerun()
 
   st.divider()
@@ -76,6 +82,7 @@ with st.sidebar:
         button_label, key=f"sess_{sess_id}", use_container_width=True
     ):
       st.session_state.current_session_id = sess_id
+      st.session_state.user_text_input = ""
       st.rerun()
 
 # --- MAIN CHAT INTERFACE ---
@@ -102,31 +109,44 @@ STRICT ROLEPLAY FORMATTING RULES:
 
 current_messages = st.session_state.sessions[current_id]["messages"]
 
-# Display Past Messages (including images if attached)
+# Display Past Messages
 for message in current_messages:
   with st.chat_message(message["role"]):
     if "image" in message and message["image"]:
       st.image(message["image"], caption="Character Reference", width=300)
     st.markdown(message["content"])
 
-# Image uploader widget for character references
-uploaded_image = st.file_uploader(
-    "Upload Character Reference Image (Optional)",
-    type=["png", "jpg", "jpeg"],
-    key=f"uploader_{current_id}",
-)
+# --- INPUT CONTROLS (Multi-line + Image + Send Button) ---
+with st.container():
+  uploaded_image = st.file_uploader(
+      "Upload Character Reference Image (Optional)",
+      type=["png", "jpg", "jpeg"],
+      key=f"uploader_{current_id}",
+  )
 
-# User Input Box
-if user_input := st.chat_input(
-    "Type your roleplay action... (Actions with *, Speech with — "")"
-):
-  # Set automatic title based on first prompt
+  # Text area allows hitting return/enter freely for new lines
+  user_input = st.text_area(
+      "Type your roleplay action... (Actions with *, Speech with —)",
+      value=st.session_state.user_text_input,
+      key=f"input_box_{current_id}",
+      height=100,
+  )
+
+  col1, col2 = st.columns([6, 1])
+  with col2:
+    send_clicked = st.button("Send", use_container_width=True)
+
+# Trigger send logic when button is pressed and input isn't empty
+if send_clicked and user_input.strip():
+  # Set automatic chat title on first message
   if (
       st.session_state.sessions[current_id]["title"] == "New Chat"
-      and len(user_input) > 0
+      and len(user_input.strip()) > 0
   ):
     st.session_state.sessions[current_id]["title"] = (
-        user_input[:25] + "..." if len(user_input) > 25 else user_input
+        user_input.strip()[:25] + "..."
+        if len(user_input.strip()) > 25
+        else user_input.strip()
     )
 
   # Process uploaded image PIL format if present
@@ -136,20 +156,14 @@ if user_input := st.chat_input(
 
   # Append user input and image to session history
   current_messages.append(
-      {"role": "user", "content": user_input, "image": pil_img}
+      {"role": "user", "content": user_input.strip(), "image": pil_img}
   )
-
-  with st.chat_message("user"):
-    if pil_img:
-      st.image(pil_img, caption="Character Reference", width=300)
-    st.markdown(user_input)
 
   # Build contents payload for Gemini SDK supporting multimodal inputs
   contents_payload = []
   if pil_img:
     contents_payload.append(pil_img)
 
-  # Add recent chat history context text
   chat_history_text = MOTM_SYSTEM_PROMPT + "\n\nConversation History:\n"
   for msg in current_messages[-10:]:
     role_label = "User" if msg["role"] == "user" else "World/Characters"
@@ -173,5 +187,7 @@ if user_input := st.chat_input(
 
   # Append assistant response
   current_messages.append({"role": "assistant", "content": reply, "image": None})
-  with st.chat_message("assistant"):
-    st.markdown(reply)
+
+  # Clear input box state and rerun to display updates cleanly
+  st.session_state.user_text_input = ""
+  st.rerun()
