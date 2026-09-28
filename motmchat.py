@@ -169,12 +169,12 @@ if send_clicked and user_input.strip():
 
   contents_payload.append(chat_history_text)
 
-  # Generate Response from Gemini with auto-retry loop
+  # Generate Response from Gemini with explicit model targeting and quota check
   reply = None
   for attempt in range(3):
     try:
       response = client.models.generate_content(
-          model="gemini-3.8-flash",
+          model="gemini-2.5-flash",
           contents=contents_payload,
           config={
               "system_instruction": MOTM_SYSTEM_PROMPT,
@@ -184,10 +184,14 @@ if send_clicked and user_input.strip():
       reply = response.text
       break
     except Exception as e:
-      if "503" in str(e) and attempt < 2:
+      err_str = str(e)
+      if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+        reply = "// Quota limit reached. Please wait a few seconds before sending another message."
+        break
+      elif "503" in err_str and attempt < 2:
         time.sleep(2)
         continue
-      reply = f"// Error connecting to AI engine: {e}"
+      reply = f"// Error connecting to AI engine: {err_str}"
 
   current_messages.append({"role": "assistant", "content": reply, "image": None})
 
