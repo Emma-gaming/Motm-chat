@@ -2,9 +2,22 @@ import os
 import streamlit as st
 from google import genai
 
-# Connect Streamlit secrets to environment variables for authentication
-if "GEMINI_API_KEY" in st.secrets:
-  os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
+# --- API KEY CONFIGURATION ---
+# 1. Try loading from Streamlit secrets first
+api_key = None
+try:
+  if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+  pass
+
+# 2. Fallback: If you want to paste your key directly here as a quick fix, 
+# replace None with your key string like: api_key = "AIzaSy..."
+if not api_key:
+  api_key = os.environ.get("GEMINI_API_KEY")
+
+# Initialize Gemini Client with the explicit key
+client = genai.Client(api_key=api_key)
 
 # Page configuration for a clean app UI
 st.set_page_config(
@@ -32,9 +45,6 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-
-# Initialize Gemini Client
-client = genai.Client()
 
 # App Header
 st.title("⚙️ Myth of the Machine")
@@ -88,7 +98,7 @@ if user_input := st.chat_input(
   # Generate Response from Gemini
   try:
     response = client.models.generate_content(
-        model="gemini-3.8-flash",
+        model="gemini-2.5-flash",
         contents=chat_history_text,
         config={
             "system_instruction": MOTM_SYSTEM_PROMPT,
@@ -103,4 +113,4 @@ if user_input := st.chat_input(
   st.session_state.messages.append({"role": "assistant", "content": reply})
   with st.chat_message("assistant"):
     st.markdown(reply)
-      
+    
