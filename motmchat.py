@@ -122,12 +122,79 @@ STRICT ROLEPLAY FORMATTING RULES:
 
 current_messages = st.session_state.sessions[current_id]["messages"]
 
-# Display Past Messages
-for message in current_messages:
+# --- DISPLAY PAST MESSAGES WITH EDIT CAPABILITY ---
+for idx, message in enumerate(current_messages):
   with st.chat_message(message["role"]):
     if "image" in message and message["image"]:
       st.image(message["image"], caption="Character Reference", width=300)
-    st.markdown(message["content"])
+
+    # If it's a user message, add an Edit button capability
+    if message["role"] == "user":
+      edit_key = f"edit_mode_{current_id}_{idx}"
+      if edit_key not in st.session_state:
+        st.session_state[edit_key] = False
+
+      col_msg, col_edit_btn = st.columns([10, 1])
+      with col_msg:
+        st.markdown(message["content"])
+      with col_edit_btn:
+        if st.button("✏️", key=f"btn_edit_{current_id}_{idx}", help="Edit this message"):
+          st.session_state[edit_key] = not st.session_state[edit_key]
+          st.rerun()
+
+      # If edit mode is open for this message
+      if st.session_state[edit_key]:
+        new_text = st.text_area(
+            "Modify your message:",
+            value=message["content"],
+            key=f"textarea_edit_{current_id}_{idx}",
+        )
+        if st.button("Save & Regenerate", key=f"save_edit_{current_id}_{idx}"):
+          # Update the message content
+          message["content"] = new_text.strip()
+          # Truncate all messages after this one so we can regenerate fresh response
+          current_messages[:] = current_messages[: idx + 1]
+          st.session_state[edit_key] = False
+
+          # Rebuild payload and generate new response
+          contents_payload = []
+          if message.get("image"):
+            contents_payload.append(message["image"])
+
+          chat_history_text = MOTM_SYSTEM_PROMPT + "\n\nConversation History:\n"
+          for msg in current_messages[-10:]:
+            role_label = "User" if msg["role"] == "user" else "World/Characters"
+            chat_history_text += f"{role_label}: {msg['content']}\n"
+
+          contents_payload.append(chat_history_text)
+
+          reply = None
+          for attempt in range(3):
+            try:
+              response = client.models.generate_content(
+                  model="gemini-2.5-flash-lite",
+                  contents=contents_payload,
+                  config={
+                      "system_instruction": MOTM_SYSTEM_PROMPT,
+                      "temperature": 0.85,
+                  },
+              )
+              reply = response.text
+              break
+            except Exception as e:
+              err_str = str(e)
+              if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+                reply = "// Quota limit reached. Please wait a moment."
+                break
+              elif "503" in err_str and attempt < 2:
+                time.sleep(2)
+                continue
+              reply = f"// Error connecting to AI engine: {err_str}"
+
+          current_messages.append({"role": "assistant", "content": reply, "image": None})
+          st.rerun()
+    else:
+      st.markdown(message["content"])
 
 # --- INPUT CONTROLS ---
 with st.container():
