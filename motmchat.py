@@ -1,9 +1,9 @@
 import os
+import uuid
 import streamlit as st
 from google import genai
 
 # --- API KEY CONFIGURATION ---
-# 1. Try loading from Streamlit secrets first
 api_key = None
 try:
   if "GEMINI_API_KEY" in st.secrets:
@@ -11,20 +11,17 @@ try:
 except Exception:
   pass
 
-# 2. Fallback: If you want to paste your key directly here as a quick fix, 
-# replace None with your key string like: api_key = "AIzaSy..."
 if not api_key:
   api_key = os.environ.get("GEMINI_API_KEY")
 
-# Initialize Gemini Client with the explicit key
 client = genai.Client(api_key=api_key)
 
-# Page configuration for a clean app UI
+# Page configuration
 st.set_page_config(
     page_title="Myth of the Machine RP", page_icon="⚙️", layout="centered"
 )
 
-# Custom CSS for dark-mode interface with high-contrast white text
+# Custom CSS for high-contrast white text on dark background
 st.markdown(
     """
     <style>
@@ -32,13 +29,13 @@ st.markdown(
         background-color: #121214;
         color: #FFFFFF !important;
     }
-    p, span, label, div, h1, h2, h3, h4, h5, h6 {
+    p, span, label, div, h1, h2, h3, h4, h5, h6, .stMarkdown {
         color: #FFFFFF !important;
     }
     .stChatMessage {
         color: #FFFFFF !important;
     }
-    .stTextInput input {
+    .stTextInput input, .stTextArea textarea {
         color: #FFFFFF !important;
     }
     </style>
@@ -46,14 +43,50 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# App Header
+# --- CHAT SESSION MANAGEMENT (Gemini Style) ---
+if "sessions" not in st.session_state:
+  # Initialize with one default chat
+  default_id = str(uuid.uuid4())[:8]
+  st.session_state.sessions = {default_id: {"title": "New Chat", "messages": []}}
+  st.session_state.current_session_id = default_id
+
+# Ensure active session exists
+if st.session_state.current_session_id not in st.session_state.sessions:
+  st.session_state.current_session_id = list(st.session_state.sessions.keys())[0]
+
+current_id = st.session_state.current_session_id
+
+# --- SIDEBAR FOR CHAT HISTORY ---
+with st.sidebar:
+  st.title("⚙️ Chats")
+
+  if st.button("➕ New Chat", use_container_width=True):
+    new_id = str(uuid.uuid4())[:8]
+    st.session_state.sessions[new_id] = {"title": "New Chat", "messages": []}
+    st.session_state.current_session_id = new_id
+    st.rerun()
+
+  st.divider()
+
+  # List past chats
+  for sess_id, sess_data in list(st.session_state.sessions.items()):
+    is_active = sess_id == current_id
+    button_label = (
+        f"👉 {sess_data['title']}" if is_active else sess_data["title"]
+    )
+    if st.button(
+        button_label, key=f"sess_{sess_id}", use_container_width=True
+    ):
+      st.session_state.current_session_id = sess_id
+      st.rerun()
+
+# --- MAIN CHAT INTERFACE ---
 st.title("⚙️ Myth of the Machine")
 st.caption(
     "Multi-Character Universe • Lore Source:"
     " https://www.tumblr.com/myth-of-the-machine"
 )
 
-# System Instructions embedding the Tumblr source context and multi-character roleplay rules
 MOTM_SYSTEM_PROMPT = """
 You are the master roleplay engine for an interactive story set in the 'Myth of the Machine' (MOTM) universe by flygutxx and nortsauce (sourced from their official Tumblr: https://www.tumblr.com/myth-of-the-machine). 
 
@@ -69,12 +102,11 @@ STRICT ROLEPLAY FORMATTING RULES:
 4. Use double slashes for out-of-roleplay notes or system updates: // Let's move the scene to the ink bar.
 """
 
-# Initialize Chat History
-if "messages" not in st.session_state:
-  st.session_state.messages = []
+# Fetch current session messages
+current_messages = st.session_state.sessions[current_id]["messages"]
 
 # Display Past Messages
-for message in st.session_state.messages:
+for message in current_messages:
   with st.chat_message(message["role"]):
     st.markdown(message["content"])
 
@@ -82,16 +114,23 @@ for message in st.session_state.messages:
 if user_input := st.chat_input(
     "Type your roleplay action... (Actions with *, Speech with — "")"
 ):
+  # Set chat title based on the first message if it's still "New Chat"
+  if (
+      st.session_state.sessions[current_id]["title"] == "New Chat"
+      and len(user_input) > 0
+  ):
+    st.session_state.sessions[current_id]["title"] = (
+        user_input[:25] + "..." if len(user_input) > 25 else user_input
+    )
+
   # Append user input
-  st.session_state.messages.append({"role": "user", "content": user_input})
+  current_messages.append({"role": "user", "content": user_input})
   with st.chat_message("user"):
     st.markdown(user_input)
 
   # Build conversation history context for Gemini
   chat_history_text = ""
-  for msg in st.session_state.messages[
-      -12:
-  ]:  # Keeps the last 12 messages for active memory
+  for msg in current_messages[-12:]:
     role_label = "User" if msg["role"] == "user" else "World/Characters"
     chat_history_text += f"{role_label}: {msg['content']}\n"
 
@@ -102,7 +141,7 @@ if user_input := st.chat_input(
         contents=chat_history_text,
         config={
             "system_instruction": MOTM_SYSTEM_PROMPT,
-            "temperature": 0.85,  # High creativity for immersive roleplay
+            "temperature": 0.85,
         },
     )
     reply = response.text
@@ -110,7 +149,6 @@ if user_input := st.chat_input(
     reply = f"// Error connecting to AI engine: {e}"
 
   # Append assistant response
-  st.session_state.messages.append({"role": "assistant", "content": reply})
+  current_messages.append({"role": "assistant", "content": reply})
   with st.chat_message("assistant"):
     st.markdown(reply)
-    
